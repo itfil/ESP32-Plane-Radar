@@ -663,6 +663,9 @@ bool ensureFrameSprite() {
     Serial.println("radar: frame sprite alloc failed");
     return false;
   }
+  // Sprite only covers a kSize x kSize square; clear the full panel once so any
+  // leftover status-screen background beyond that square (taller panels) goes black.
+  tft.fillScreen(config::kColorBlack);
   s_frame_ready = true;
   return true;
 }

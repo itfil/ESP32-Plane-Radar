@@ -4,7 +4,7 @@
 
 **3D printed case (STL + assembly):** [MakerWorld](https://makerworld.com/en/models/2872376-esp32-plane-radar-live-ads-b-on-a-round-display#profileId-3207083) · **Firmware:** [Releases](https://github.com/MatixYo/ESP32-Plane-Radar/releases)
 
-Firmware for an **ESP32-C3 Super Mini** and a **1.28″ round GC9A01** display (240×240). Shows a circular **ADS-B radar** around your configured location, with **WiFiManager** for first-time setup.
+Firmware for an **ESP32-C3 Super Mini** and a **2.4″ TJCTM24024-SPI (ILI9341)** display (240×320). Shows a circular **ADS-B radar** around your configured location, with **WiFiManager** for first-time setup.
 
 ## What it does
 
@@ -98,7 +98,7 @@ Edit **`include/config.h`** for hardware and behavior:
 | Portal | `kPortalApName`, `kPortalIp`, `kPortalHostname` / `kPortalHostUrl` (mDNS; needs `-DWM_MDNS` in `platformio.ini`) |
 | Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
 | BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
-| Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
+| Display SPI | pins, `kDisplayPinBl`, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
 | ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
 
@@ -138,7 +138,7 @@ src/
   services/
 ```
 
-## Wiring (GC9A01 ↔ ESP32-C3 Super Mini)
+## Wiring (TJCTM24024-SPI ↔ ESP32-C3 Super Mini)
 
 | Display | ESP32-C3 |
 |---------|----------|
@@ -146,10 +146,13 @@ src/
 | GND | GND |
 | RST | GPIO **0** |
 | CS | GPIO **1** |
-| DC | GPIO **10** |
-| SDA (MOSI) | GPIO **3** |
-| SCL (SCLK) | GPIO **4** |
+| DC (RS) | GPIO **10** |
+| SDI (MOSI) | GPIO **3** |
+| SCK | GPIO **4** |
+| LED (backlight) | GPIO **5** |
 | BOOT (user) | GPIO **9** |
+
+Touch (T_CLK/T_CS/T_DIN/T_DO/T_IRQ) is not wired up — the firmware has no touch input support.
 
 ## Build
 

@@ -5,10 +5,11 @@
 
 #include "config.h"
 
-/** LovyanGFX device: GC9A01 on SPI. Pin values come from config.h. */
+/** LovyanGFX device: ILI9341 (TJCTM24024-SPI) on SPI. Pin values come from config.h. */
 class LGFX : public lgfx::LGFX_Device {
   lgfx::Bus_SPI _bus;
-  lgfx::Panel_GC9A01 _panel;
+  lgfx::Panel_ILI9341 _panel;
+  lgfx::Light_PWM _light;
 
 public:
   LGFX() {
@@ -27,9 +28,20 @@ public:
       auto cfg = _panel.config();
       cfg.pin_cs = static_cast<int>(config::kDisplayPinCs);
       cfg.pin_rst = static_cast<int>(config::kDisplayPinRst);
+      cfg.panel_width = config::kDisplayWidth;
+      cfg.panel_height = config::kDisplayHeight;
       cfg.invert = config::kDisplayInvert;
       cfg.rgb_order = config::kDisplayRgbOrder;
       _panel.config(cfg);
+    }
+    {
+      auto cfg = _light.config();
+      cfg.pin_bl = static_cast<int>(config::kDisplayPinBl);
+      cfg.invert = false;
+      cfg.freq = 44100;
+      cfg.pwm_channel = 7;
+      _light.config(cfg);
+      _panel.setLight(&_light);
     }
     setPanel(&_panel);
   }

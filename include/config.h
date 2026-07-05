@@ -29,20 +29,22 @@ constexpr unsigned long kBootResetHoldMs = 3000UL;
 /** Ignore BOOT taps shorter than this (debounce). */
 constexpr unsigned long kBootTapMinMs = 40UL;
 
-// --- Display: GC9A01 1.28" round 240×240 (SPI) ---
+// --- Display: TJCTM24024-SPI 2.4" ILI9341 240×320 (SPI) ---
 constexpr gpio_num_t kDisplayPinRst = GPIO_NUM_0;
 constexpr gpio_num_t kDisplayPinCs = GPIO_NUM_1;
 constexpr gpio_num_t kDisplayPinDc = GPIO_NUM_10;
-constexpr gpio_num_t kDisplayPinMosi = GPIO_NUM_3;  // display SDA
-constexpr gpio_num_t kDisplayPinSclk = GPIO_NUM_4;  // display SCL
+constexpr gpio_num_t kDisplayPinMosi = GPIO_NUM_3;  // display SDI(MOSI)
+constexpr gpio_num_t kDisplayPinSclk = GPIO_NUM_4;  // display SCK
+/** LED (backlight) pin; tie LED to 3V3 instead and drop this if no PWM dimming is needed. */
+constexpr gpio_num_t kDisplayPinBl = GPIO_NUM_5;
 
 constexpr int kDisplayWidth = 240;
-constexpr int kDisplayHeight = 240;
+constexpr int kDisplayHeight = 320;
 
 constexpr uint32_t kDisplaySpiWriteHz = 40000000;
-// GC9A01 modules often need invert + BGR for correct black/green output
-constexpr bool kDisplayInvert = true;
-constexpr bool kDisplayRgbOrder = true;
+// ILI9341 modules typically need neither invert nor BGR swap; adjust if colors look wrong
+constexpr bool kDisplayInvert = false;
+constexpr bool kDisplayRgbOrder = false;
 
 // --- Radar center defaults (overridden via WiFi setup portal) ---
 constexpr double kDefaultRadarLat = 52.3676;
