@@ -7,7 +7,10 @@
 
 #include "config.h"
 #include "hardware/display.h"
+#include "hardware/select_button.h"
 #include "services/adsb_client.h"
+#include "services/aircraft_info.h"
+#include "services/flight_route.h"
 #include "services/radar_location.h"
 #include "services/wifi_setup.h"
 #include "ui/radar_display.h"
@@ -49,15 +52,53 @@ void handleBootButton() {
   }
 }
 
+void onSelectTap() {
+  char callsign[9] = "";
+  char hex[8] = "";
+  const bool selected =
+      ui::radarSelectionCycleNext(callsign, sizeof(callsign), hex, sizeof(hex));
+  if (g_radar_visible) {
+    ui::radarDisplayDraw();
+  }
+  if (!selected || !ui::radarSelectionLookupNeedsFetch()) {
+    return;
+  }
+
+  const unsigned long lookup_start = millis();
+
+  services::flight_route::Route route;
+  const bool route_found = services::flight_route::fetchRoute(callsign, &route);
+  ui::radarSelectionSetRoute(callsign, route_found, route);
+
+  services::aircraft_info::AircraftInfo info;
+  const bool info_found = services::aircraft_info::fetchAircraftInfo(hex, &info);
+  ui::radarSelectionSetAircraftInfo(callsign, info_found, info);
+
+  Serial.printf("select: lookups for %s (%s) blocked loop() for %lu ms\n", callsign,
+                hex, millis() - lookup_start);
+
+  if (g_radar_visible) {
+    ui::radarDisplayDraw();
+  }
+}
+
+void handleSelectButton() {
+  if (selectButtonConsumeTap()) {
+    onSelectTap();
+  }
+}
+
 void fetchAndDrawAircraft() {
   const float fetch_km = ui::radar::fetchRadiusKm();
   if (!services::adsb::fetchUpdate(services::location::lat(),
                                    services::location::lon(), fetch_km)) {
     handleBootButton();
+    handleSelectButton();
     return;
   }
   ui::radarDisplayRefreshAircraft();
   handleBootButton();
+  handleSelectButton();
 }
 
 }  // namespace
@@ -69,6 +110,7 @@ void setup() {
   Serial.println("Plane Radar");
 
   bootButtonInit();
+  selectButtonInit();
   displayInit();
   if (wifiShowsSetupScreenOnBoot()) {
     statusScreenPortal();
@@ -84,6 +126,7 @@ void setup() {
 
 void loop() {
   handleBootButton();
+  handleSelectButton();
   wifiLoop();
 
   if (WiFi.status() != WL_CONNECTED) {

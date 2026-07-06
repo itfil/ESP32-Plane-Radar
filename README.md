@@ -13,14 +13,34 @@ Firmware for an **ESP32-C3 Super Mini** and a **2.4″ TJCTM24024-SPI (ILI9341)*
 
 After Wi‑Fi is saved, the device reconnects automatically; the radar runs in the main loop with periodic ADS-B updates (~5 s).
 
-## Controls (BOOT, GPIO 9, active LOW)
+## Controls
 
-| Action | Effect |
-|--------|--------|
-| **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash |
-| **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
+| Button | Action | Effect |
+|--------|--------|--------|
+| BOOT (GPIO 9, active LOW) | **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash |
+| BOOT (GPIO 9, active LOW) | **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
+| SELECT (GPIO 6, active LOW) | **Short tap** | Cycle the aircraft info panel through in-ring aircraft, then back to none |
 
 During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
+
+### Aircraft info panel
+
+On panels taller than the 240×240 radar (e.g. the 240×320 TJCTM24024-SPI), tapping **SELECT** cycles
+through the aircraft currently drawn as full symbols inside the outer ring (highlighted with a white
+target-lock ring) and shows, in the strip below the radar:
+
+- **Left column:** callsign, aircraft type (from the ADS-B feed), altitude, ground speed
+- **Right column:** registered aircraft type and manufacturer, looked up from adsbdb by the aircraft's
+  Mode-S hex address (`/v0/aircraft/{hex}`)
+- **Bottom lines:** scheduled route as airport codes (origin → destination), then a friendlier
+  `country-municipality → country-municipality` description, truncated with `...` if too long to fit;
+  both looked up from adsbdb by callsign (`/v0/callsign/{callsign}`)
+
+Both lookups are a single one-off request per selected aircraft, fired together only when the
+selection changes — never part of the periodic ADS-B poll. Either can independently show
+"unavailable"/blank if adsbdb has no data on file (common for GA/private flights and ICAO-hex
+fallback callsigns). On the original square 240×240 GC9A01 display there's no spare strip, so the
+panel is inert.
 
 ## Wi‑Fi setup portal
 
@@ -53,7 +73,9 @@ After a reset, the device reboots and shows the setup screen immediately (no “
 
 - Dark blue background, subdued green rings and crosshairs
 - White **N / S / E / W** at the bezel; range label on the **east** spoke (ring 3 = ¾ of outer radius)
+- Outer-edge range (full display radius) in the **top-right corner**
 - White center dot
+- SELECT-ed aircraft gets a white target-lock ring around its symbol
 
 Layout and colors: `include/ui/radar_theme.h`.
 
@@ -98,6 +120,7 @@ Edit **`include/config.h`** for hardware and behavior:
 | Portal | `kPortalApName`, `kPortalIp`, `kPortalHostname` / `kPortalHostUrl` (mDNS; needs `-DWM_MDNS` in `platformio.ini`) |
 | Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
 | BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
+| SELECT | `kSelectPin`, `kSelectTapMinMs` |
 | Display SPI | pins, `kDisplayPinBl`, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
 | ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
@@ -151,6 +174,7 @@ src/
 | SCK | GPIO **4** |
 | LED (backlight) | GPIO **5** |
 | BOOT (user) | GPIO **9** |
+| SELECT (user, cycle aircraft panel) | GPIO **6** (to GND, active LOW) |
 
 Touch (T_CLK/T_CS/T_DIN/T_DO/T_IRQ) is not wired up — the firmware has no touch input support.
 
@@ -209,4 +233,5 @@ The release workflow builds firmware in CI and attaches the merged image to the 
 
 - [LovyanGFX](https://github.com/lovyan03/LovyanGFX)
 - [WiFiManager](https://github.com/tzapu/WiFiManager)
+- [adsbdb](https://api.adsbdb.com) — free, keyless route + aircraft-registry lookup API used by the aircraft info panel
 - [ArduinoJson](https://github.com/bblanchon/ArduinoJson)

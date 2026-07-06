@@ -46,43 +46,81 @@ int performGetWithPoll(HTTPClient& http) {
   return HTTPC_ERROR_READ_TIMEOUT;
 }
 
-bool readResponseBodyWithPoll(HTTPClient& http, String& payload) {
-  WiFiClient* stream = http.getStreamPtr();
-  if (stream == nullptr) {
-    return false;
-  }
+/**
+ * Feeds ArduinoJson directly from the response stream (no intermediate
+ * String buffer — that was the memory hog that made large responses fail
+ * under heap pressure) while still calling pollNetwork() during waits, so
+ * WiFiManager's LAN portal stays responsive across a slow multi-second read.
+ */
+class PollingStreamReader {
+ public:
+  PollingStreamReader(WiFiClient* stream, unsigned long deadline)
+      : stream_(stream), deadline_(deadline) {}
 
-  const int content_length = http.getSize();
-  if (content_length > 0) {
-    payload.reserve(static_cast<unsigned>(content_length + 1));
-  }
-
-  uint8_t buffer[512];
-  const unsigned long deadline = millis() + kRequestTimeoutMs;
-  while (millis() < deadline) {
-    pollNetwork();
-    const int available = stream->available();
-    if (available > 0) {
-      const int to_read =
-          available > static_cast<int>(sizeof(buffer)) ? static_cast<int>(sizeof(buffer))
-                                                       : available;
-      const int read_bytes = stream->readBytes(buffer, to_read);
-      if (read_bytes > 0) {
-        payload.concat(reinterpret_cast<const char*>(buffer),
-                       static_cast<unsigned>(read_bytes));
+  int read() {
+    while (true) {
+      if (stream_->available() > 0) {
+        const int c = stream_->read();
+        if (c >= 0) {
+          ++bytes_read_;
+          return c;
+        }
       }
+      pollNetwork();
+      if (millis() >= deadline_) {
+        timed_out_ = true;
+        return -1;
+      }
+      if (!stream_->connected() && stream_->available() <= 0) {
+        disconnected_ = true;
+        return -1;
+      }
+      delay(1);
     }
-    if (content_length > 0 &&
-        static_cast<int>(payload.length()) >= content_length) {
-      break;
-    }
-    if (!http.connected() && stream->available() <= 0) {
-      break;
-    }
-    delay(1);
   }
 
-  return payload.length() > 0;
+  size_t bytesRead() const { return bytes_read_; }
+  bool timedOut() const { return timed_out_; }
+  bool disconnectedEarly() const { return disconnected_; }
+
+ private:
+  WiFiClient* stream_;
+  unsigned long deadline_;
+  size_t bytes_read_ = 0;
+  bool timed_out_ = false;
+  bool disconnected_ = false;
+};
+
+/**
+ * adsb.fi returns ~20-30 raw fields per aircraft; we only ever read the ones
+ * listed below. Without this filter, ArduinoJson allocates storage for every
+ * field of every aircraft, and at larger ranges (more aircraft in view) that
+ * routinely exceeded available heap — causing slow reads, NoMemory parse
+ * failures, and even a TLS connection failure under pressure. Built once and
+ * reused; filters are read-only after construction.
+ */
+JsonDocument& aircraftFilter() {
+  static JsonDocument filter;
+  static bool built = false;
+  if (!built) {
+    JsonObject ac_filter = filter["ac"][0].to<JsonObject>();
+    ac_filter["lat"] = true;
+    ac_filter["lon"] = true;
+    ac_filter["true_heading"] = true;
+    ac_filter["mag_heading"] = true;
+    ac_filter["track"] = true;
+    ac_filter["dir"] = true;
+    ac_filter["gs"] = true;
+    ac_filter["tas"] = true;
+    ac_filter["ias"] = true;
+    ac_filter["alt_baro"] = true;
+    ac_filter["alt_geom"] = true;
+    ac_filter["flight"] = true;
+    ac_filter["hex"] = true;
+    ac_filter["t"] = true;
+    built = true;
+  }
+  return filter;
 }
 
 float kmToNauticalMiles(float km) { return km / kKmPerNm; }
@@ -193,6 +231,7 @@ void fillTagFields(Aircraft* ac, const JsonObject& plane) {
     copyJsonStringTrimmed(plane, "hex", ac->callsign, sizeof(ac->callsign));
   }
 
+  copyJsonStringTrimmed(plane, "hex", ac->hex, sizeof(ac->hex));
   copyJsonStringTrimmed(plane, "t", ac->type, sizeof(ac->type));
   formatAltitudeTag(plane, ac->alt, sizeof(ac->alt));
 }
@@ -225,25 +264,39 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   }
 
   http.setTimeout(kRequestTimeoutMs);
+  Serial.printf("adsb: GET %s (heap free=%u max_alloc=%u)\n", url.c_str(),
+                ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+  const unsigned long t_start = millis();
   const int code = performGetWithPoll(http);
+  Serial.printf("adsb: HTTP %d after %lu ms\n", code, millis() - t_start);
   if (code != HTTP_CODE_OK) {
-    Serial.printf("adsb: HTTP %d\n", code);
     http.end();
     return false;
   }
 
-  String payload;
-  if (!readResponseBodyWithPoll(http, payload)) {
-    Serial.println("adsb: empty response");
+  WiFiClient* stream = http.getStreamPtr();
+  if (stream == nullptr) {
+    Serial.println("adsb: no response stream");
     http.end();
     return false;
   }
+
+  const unsigned long t_body_start = millis();
+  PollingStreamReader reader(stream, t_body_start + kRequestTimeoutMs);
+  JsonDocument doc;
+  const DeserializationError err =
+      deserializeJson(doc, reader, DeserializationOption::Filter(aircraftFilter()));
   http.end();
 
-  JsonDocument doc;
-  const DeserializationError err = deserializeJson(doc, payload);
+  Serial.printf(
+      "adsb: body %u bytes in %lu ms (timed_out=%d disconnected=%d) (heap free=%u "
+      "max_alloc=%u)\n",
+      reader.bytesRead(), millis() - t_body_start, reader.timedOut(),
+      reader.disconnectedEarly(), ESP.getFreeHeap(), ESP.getMaxAllocHeap());
+
   if (err) {
-    Serial.printf("adsb: JSON parse error: %s\n", err.c_str());
+    Serial.printf("adsb: JSON parse error: %s (body %u bytes)\n", err.c_str(),
+                  reader.bytesRead());
     return false;
   }
 

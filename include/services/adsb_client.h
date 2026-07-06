@@ -13,6 +13,7 @@ struct Aircraft {
   char callsign[9];
   char type[5];
   char alt[12];
+  char hex[8];
 };
 
 constexpr size_t kMaxAircraft = 64;

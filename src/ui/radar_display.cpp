@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "config.h"
 #include "hardware/display.h"
@@ -52,6 +54,11 @@ int s_scale_label_h = 0;
 lgfx::LovyanGFX* s_draw = &tft;
 LGFX_Sprite s_frame(&tft);
 bool s_frame_ready = false;
+
+// Info-panel selection; declared here (not near drawSelectionPanel further
+// down) so drawAircraft() can highlight the selected symbol on the radar.
+bool s_has_selection = false;
+services::adsb::Aircraft s_selected;
 
 class DrawScope {
  public:
@@ -480,6 +487,18 @@ void sortBeyondDotsFarFirst(BeyondDotDrawItem* items, size_t count) {
   }
 }
 
+constexpr int kSelectionRingRadiusPx =
+    radar::kAircraftNoseLenPx + radar::kAircraftTailHalfPx + 3;
+
+/** Target-lock ring around the aircraft currently shown in the info panel. */
+void drawSelectionRing(int x, int y) {
+  s_draw->drawCircle(x, y, kSelectionRingRadiusPx, radar::kColorLabel);
+}
+
+bool isSelected(const services::adsb::Aircraft& plane) {
+  return s_has_selection && strcmp(plane.callsign, s_selected.callsign) == 0;
+}
+
 void drawAircraft() {
   initLabelMetrics();
 
@@ -534,6 +553,9 @@ void drawAircraft() {
     drawSpeedVector(x, y, planes[i].nose_deg, planes[i].track_deg,
                     planes[i].gs_knots, radar::kColorTrackVector);
     drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
+    if (isSelected(planes[i])) {
+      drawSelectionRing(x, y);
+    }
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
@@ -634,6 +656,18 @@ void drawScaleLabel(int cx, int cy, int outer_radius) {
                                scaleLabelAnchorX(cx, outer_radius), cy);
 }
 
+/** Outer-ring range (full display radius), top-right corner — outside the circle. */
+void drawOuterRangeLabel() {
+  char label[12];
+  radar::formatRing3Label(label, sizeof(label), radar::rangeCurrent().outer_km,
+                          radar::useMiles());
+  applyScaleStyle();
+  s_draw->setTextDatum(textdatum_t::top_right);
+  s_draw->setTextColor(radar::kColorGrid, radar::kColorBackground);
+  constexpr int kMarginPx = 4;
+  s_draw->drawString(label, radar::kSize - 1 - kMarginPx, kMarginPx);
+}
+
 template <typename Gfx>
 void drawStaticGrid(Gfx& gfx) {
   initLabelMetrics();
@@ -651,6 +685,7 @@ void drawStaticGrid(Gfx& gfx) {
   drawCenterDot(cx, cy);
   drawCardinalLabels();
   drawScaleLabel(cx, cy, grid_r);
+  drawOuterRangeLabel();
   gfx.setTextDatum(textdatum_t::top_left);
 }
 
@@ -670,10 +705,174 @@ bool ensureFrameSprite() {
   return true;
 }
 
+// --- Aircraft info panel (bottom strip on panels taller than radar::kSize) ---
+
+bool s_lookup_ready = false;
+bool s_route_valid = false;
+char s_route_origin[8] = "";
+char s_route_destination[8] = "";
+char s_route_origin_country[4] = "";
+char s_route_origin_municipality[24] = "";
+char s_route_destination_country[4] = "";
+char s_route_destination_municipality[24] = "";
+bool s_aircraft_valid = false;
+char s_aircraft_type[24] = "";
+char s_aircraft_manufacturer[20] = "";
+
+void clearLookupState() {
+  s_lookup_ready = false;
+  s_route_valid = false;
+  s_route_origin[0] = '\0';
+  s_route_destination[0] = '\0';
+  s_route_origin_country[0] = '\0';
+  s_route_origin_municipality[0] = '\0';
+  s_route_destination_country[0] = '\0';
+  s_route_destination_municipality[0] = '\0';
+  s_aircraft_valid = false;
+  s_aircraft_type[0] = '\0';
+  s_aircraft_manufacturer[0] = '\0';
+}
+
+/** Shrink `full` until it fits max_width_px (current font), appending "...". */
+void fitLineWithEllipsis(const char* full, char* out, size_t out_len, int max_width_px) {
+  strncpy(out, full, out_len - 1);
+  out[out_len - 1] = '\0';
+  if (tft.textWidth(out) <= max_width_px) {
+    return;
+  }
+  const size_t len = strlen(full);
+  for (size_t n = len; n > 0; --n) {
+    snprintf(out, out_len, "%.*s...", static_cast<int>(n), full);
+    if (tft.textWidth(out) <= max_width_px) {
+      return;
+    }
+  }
+  strncpy(out, "...", out_len - 1);
+  out[out_len - 1] = '\0';
+}
+
+/** Same in-ring filter as drawAircraft(), so cycling matches what's on screen. */
+size_t buildVisibleIndices(size_t* out_indices, size_t max_out) {
+  const size_t n = services::adsb::aircraftCount();
+  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  size_t count = 0;
+  for (size_t i = 0; i < n && count < max_out; ++i) {
+    float dx_km = 0.0f;
+    float dy_km = 0.0f;
+    float dist_km = 0.0f;
+    offsetKmFromCenter(planes[i].lat, planes[i].lon, &dx_km, &dy_km, &dist_km);
+    if (isInsideOuterRingKm(dist_km)) {
+      out_indices[count++] = i;
+    }
+  }
+  return count;
+}
+
+/** Keep the selected aircraft's telemetry live across periodic refetches. */
+void refreshSelectedSnapshot() {
+  if (!s_has_selection) {
+    return;
+  }
+  const size_t n = services::adsb::aircraftCount();
+  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+  for (size_t i = 0; i < n; ++i) {
+    if (strcmp(planes[i].callsign, s_selected.callsign) == 0) {
+      s_selected = planes[i];
+      return;
+    }
+  }
+  // Not in the latest fetch (drifted out of range/lost) — keep last-known
+  // snapshot rather than yanking the panel out from under the user.
+}
+
+void applyPanelStyle() {
+  if (displayFontIsSmooth()) {
+    displayFontSetSmoothSize(tft, 0.85f);
+  } else {
+    displayFontSetBitmap(tft, &fonts::FreeSans9pt7b);
+  }
+}
+
+void drawSelectionPanel() {
+  const int panel_y = radar::kSize;
+  const int panel_h = config::kDisplayHeight - radar::kSize;
+  if (panel_h <= 0) {
+    return;  // square panel (e.g. round GC9A01) — no room for a strip
+  }
+
+  tft.fillRect(0, panel_y, config::kDisplayWidth, panel_h, config::kColorBlack);
+  if (!s_has_selection) {
+    return;
+  }
+
+  displayFontEnsureLoaded(tft);
+  applyPanelStyle();
+  tft.setTextDatum(textdatum_t::top_left);
+  tft.setTextColor(config::kTextOnBlack, config::kColorBlack);
+
+  constexpr int kPanelPadX = 6;
+  constexpr int kPanelLineGap = 2;
+  const int line_h = tft.fontHeight();
+  int y = panel_y + kPanelPadX;
+
+  const int y1 = y;
+  char line1[24];
+  snprintf(line1, sizeof(line1), "%s  %s", s_selected.callsign,
+           s_selected.type[0] != '\0' ? s_selected.type : "?");
+  tft.drawString(line1, kPanelPadX, y);
+  y += line_h + kPanelLineGap;
+
+  const int y2 = y;
+  char line2[24];
+  snprintf(line2, sizeof(line2), "%s   %d kt", s_selected.alt,
+           static_cast<int>(lroundf(s_selected.gs_knots)));
+  tft.drawString(line2, kPanelPadX, y);
+  y += line_h + kPanelLineGap;
+
+  char line3[24];
+  char line4[48];
+  line4[0] = '\0';
+  if (!s_lookup_ready) {
+    strncpy(line3, "Looking up route...", sizeof(line3) - 1);
+    line3[sizeof(line3) - 1] = '\0';
+  } else if (s_route_valid) {
+    snprintf(line3, sizeof(line3), "%s -> %s", s_route_origin, s_route_destination);
+    char full[64];
+    snprintf(full, sizeof(full), "%s-%s -> %s-%s", s_route_origin_country,
+             s_route_origin_municipality, s_route_destination_country,
+             s_route_destination_municipality);
+    fitLineWithEllipsis(full, line4, sizeof(line4),
+                        config::kDisplayWidth - kPanelPadX * 2);
+  } else {
+    strncpy(line3, "Route unavailable", sizeof(line3) - 1);
+    line3[sizeof(line3) - 1] = '\0';
+  }
+  tft.drawString(line3, kPanelPadX, y);
+  y += line_h + kPanelLineGap;
+
+  if (line4[0] != '\0') {
+    tft.drawString(line4, kPanelPadX, y);
+  }
+
+  if (s_lookup_ready && s_aircraft_valid) {
+    tft.setTextDatum(textdatum_t::top_right);
+    const int right_x = config::kDisplayWidth - kPanelPadX;
+    if (s_aircraft_type[0] != '\0') {
+      tft.drawString(s_aircraft_type, right_x, y1);
+    }
+    if (s_aircraft_manufacturer[0] != '\0') {
+      tft.drawString(s_aircraft_manufacturer, right_x, y2);
+    }
+  }
+
+  tft.setTextDatum(textdatum_t::top_left);
+}
+
 // Double-buffered frame: composite the grid AND aircraft into the off-screen
 // sprite, then blit it to the panel in a single pushSprite. Because the panel
 // is updated in one pass, labels never show an erase/redraw gap — no flicker.
 void renderFrame() {
+  refreshSelectedSnapshot();
   drawStaticGrid(s_frame);  // opens its own DrawScope(s_frame)
   {
     const DrawScope scope(s_frame);
@@ -681,6 +880,7 @@ void renderFrame() {
   }
   s_frame.pushSprite(0, 0);
   tft.setTextDatum(textdatum_t::top_left);
+  drawSelectionPanel();
 }
 
 }  // namespace
@@ -699,6 +899,7 @@ void radarDisplayDraw() {
   drawStaticGrid(tft);
   drawAircraft();
   tft.setTextDatum(textdatum_t::top_left);
+  drawSelectionPanel();
 }
 
 void radarDisplayRefreshAircraft() {
@@ -710,6 +911,89 @@ void radarDisplayRefreshAircraft() {
   }
 
   radarDisplayDraw();
+}
+
+bool radarSelectionCycleNext(char* callsign_out, size_t callsign_out_len,
+                             char* hex_out, size_t hex_out_len) {
+  size_t visible[services::adsb::kMaxAircraft];
+  const size_t visible_count =
+      buildVisibleIndices(visible, services::adsb::kMaxAircraft);
+  const services::adsb::Aircraft* planes = services::adsb::aircraftList();
+
+  int current_pos = -1;
+  if (s_has_selection) {
+    for (size_t v = 0; v < visible_count; ++v) {
+      if (strcmp(planes[visible[v]].callsign, s_selected.callsign) == 0) {
+        current_pos = static_cast<int>(v);
+        break;
+      }
+    }
+  }
+
+  const int next_pos = current_pos + 1;
+  if (visible_count == 0 || next_pos >= static_cast<int>(visible_count)) {
+    s_has_selection = false;
+    clearLookupState();
+    return false;
+  }
+
+  s_selected = planes[visible[next_pos]];
+  s_has_selection = true;
+  clearLookupState();
+  if (callsign_out != nullptr && callsign_out_len > 0) {
+    strncpy(callsign_out, s_selected.callsign, callsign_out_len - 1);
+    callsign_out[callsign_out_len - 1] = '\0';
+  }
+  if (hex_out != nullptr && hex_out_len > 0) {
+    strncpy(hex_out, s_selected.hex, hex_out_len - 1);
+    hex_out[hex_out_len - 1] = '\0';
+  }
+  return true;
+}
+
+bool radarSelectionLookupNeedsFetch() { return s_has_selection && !s_lookup_ready; }
+
+void radarSelectionSetRoute(const char* for_callsign, bool found,
+                            const services::flight_route::Route& route) {
+  if (!s_has_selection || strcmp(s_selected.callsign, for_callsign) != 0) {
+    return;  // selection moved on while the lookup was in flight
+  }
+  s_lookup_ready = true;
+  s_route_valid = found;
+  if (!found) {
+    return;
+  }
+  strncpy(s_route_origin, route.origin, sizeof(s_route_origin) - 1);
+  s_route_origin[sizeof(s_route_origin) - 1] = '\0';
+  strncpy(s_route_destination, route.destination, sizeof(s_route_destination) - 1);
+  s_route_destination[sizeof(s_route_destination) - 1] = '\0';
+  strncpy(s_route_origin_country, route.origin_country, sizeof(s_route_origin_country) - 1);
+  s_route_origin_country[sizeof(s_route_origin_country) - 1] = '\0';
+  strncpy(s_route_origin_municipality, route.origin_municipality,
+          sizeof(s_route_origin_municipality) - 1);
+  s_route_origin_municipality[sizeof(s_route_origin_municipality) - 1] = '\0';
+  strncpy(s_route_destination_country, route.destination_country,
+          sizeof(s_route_destination_country) - 1);
+  s_route_destination_country[sizeof(s_route_destination_country) - 1] = '\0';
+  strncpy(s_route_destination_municipality, route.destination_municipality,
+          sizeof(s_route_destination_municipality) - 1);
+  s_route_destination_municipality[sizeof(s_route_destination_municipality) - 1] = '\0';
+}
+
+void radarSelectionSetAircraftInfo(const char* for_callsign, bool found,
+                                   const services::aircraft_info::AircraftInfo& info) {
+  if (!s_has_selection || strcmp(s_selected.callsign, for_callsign) != 0) {
+    return;  // selection moved on while the lookup was in flight
+  }
+  s_lookup_ready = true;
+  s_aircraft_valid = found;
+  if (!found) {
+    return;
+  }
+  strncpy(s_aircraft_type, info.type, sizeof(s_aircraft_type) - 1);
+  s_aircraft_type[sizeof(s_aircraft_type) - 1] = '\0';
+  strncpy(s_aircraft_manufacturer, info.manufacturer, sizeof(s_aircraft_manufacturer) - 1);
+  s_aircraft_manufacturer[sizeof(s_aircraft_manufacturer) - 1] = '\0';
 }
 
 }  // namespace ui

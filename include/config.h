@@ -29,6 +29,11 @@ constexpr unsigned long kBootResetHoldMs = 3000UL;
 /** Ignore BOOT taps shorter than this (debounce). */
 constexpr unsigned long kBootTapMinMs = 40UL;
 
+// --- SELECT button: cycles the aircraft info panel (active LOW) ---
+constexpr gpio_num_t kSelectPin = GPIO_NUM_6;
+/** Ignore SELECT taps shorter than this (debounce). */
+constexpr unsigned long kSelectTapMinMs = 40UL;
+
 // --- Display: TJCTM24024-SPI 2.4" ILI9341 240×320 (SPI) ---
 constexpr gpio_num_t kDisplayPinRst = GPIO_NUM_0;
 constexpr gpio_num_t kDisplayPinCs = GPIO_NUM_1;
@@ -47,8 +52,8 @@ constexpr bool kDisplayInvert = false;
 constexpr bool kDisplayRgbOrder = false;
 
 // --- Radar center defaults (overridden via WiFi setup portal) ---
-constexpr double kDefaultRadarLat = 52.3676;
-constexpr double kDefaultRadarLon = 4.9041;
+constexpr double kDefaultRadarLat = 46.6390;
+constexpr double kDefaultRadarLon = 7.0569;
 
 /** Poll adsb.fi (API public limit: 1 req/s). */
 constexpr unsigned long kAdsbFetchIntervalMs = 3000;
