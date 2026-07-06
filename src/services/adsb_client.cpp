@@ -22,6 +22,13 @@ Aircraft s_aircraft[kMaxAircraft];
 size_t s_aircraft_count = 0;
 PollFn s_poll_fn = nullptr;
 
+// Persistent (not stack-local): with setReuse(true), keeping these alive
+// across calls lets HTTPClient skip the ~1s TLS handshake on most polls by
+// reusing the existing keep-alive connection to adsb.fi.
+WiFiClientSecure s_client;
+HTTPClient s_http;
+bool s_http_ready = false;
+
 void pollNetwork() {
   if (s_poll_fn != nullptr) {
     s_poll_fn();
@@ -254,30 +261,32 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   url += "/dist/";
   url += String(dist_nm, 1);
 
-  WiFiClientSecure client;
-  client.setInsecure();
+  if (!s_http_ready) {
+    s_client.setInsecure();
+    s_http.setReuse(true);
+    s_http_ready = true;
+  }
 
-  HTTPClient http;
-  if (!http.begin(client, url)) {
+  if (!s_http.begin(s_client, url)) {
     Serial.println("adsb: http.begin failed");
     return false;
   }
 
-  http.setTimeout(kRequestTimeoutMs);
+  s_http.setTimeout(kRequestTimeoutMs);
   Serial.printf("adsb: GET %s (heap free=%u max_alloc=%u)\n", url.c_str(),
                 ESP.getFreeHeap(), ESP.getMaxAllocHeap());
   const unsigned long t_start = millis();
-  const int code = performGetWithPoll(http);
+  const int code = performGetWithPoll(s_http);
   Serial.printf("adsb: HTTP %d after %lu ms\n", code, millis() - t_start);
   if (code != HTTP_CODE_OK) {
-    http.end();
+    s_http.end();
     return false;
   }
 
-  WiFiClient* stream = http.getStreamPtr();
+  WiFiClient* stream = s_http.getStreamPtr();
   if (stream == nullptr) {
     Serial.println("adsb: no response stream");
-    http.end();
+    s_http.end();
     return false;
   }
 
@@ -286,7 +295,7 @@ bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km) {
   JsonDocument doc;
   const DeserializationError err =
       deserializeJson(doc, reader, DeserializationOption::Filter(aircraftFilter()));
-  http.end();
+  s_http.end();
 
   Serial.printf(
       "adsb: body %u bytes in %lu ms (timed_out=%d disconnected=%d) (heap free=%u "
