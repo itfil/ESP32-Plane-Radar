@@ -38,15 +38,23 @@ namespace {
 bool s_label_metrics_ready = false;
 bool s_cardinal_use_vlw = false;
 bool s_scale_use_vlw = false;
+bool s_outer_range_use_vlw = false;
 float s_cardinal_vlw_size = 0.56f;
 float s_scale_vlw_size = 0.50f;
 float s_tag_vlw_size = 0.56f;
+float s_outer_range_vlw_size = 0.7f;
 const lgfx::GFXfont* s_cardinal_gfx = &fonts::FreeSansBold12pt7b;
 const lgfx::GFXfont* s_scale_gfx = &fonts::FreeSansBold9pt7b;
 const lgfx::GFXfont* s_tag_gfx = &fonts::FreeSansBold12pt7b;
+const lgfx::GFXfont* s_outer_range_gfx = &fonts::FreeSansBold12pt7b;
 
 bool s_tag_label_metrics_ready = false;
 bool s_tag_use_vlw = false;
+
+bool s_panel_label_metrics_ready = false;
+bool s_panel_use_vlw = false;
+float s_panel_vlw_size = 0.5f;
+const lgfx::GFXfont* s_panel_gfx = &fonts::FreeSans9pt7b;
 
 int s_scale_label_max_w = 0;
 int s_scale_label_h = 0;
@@ -59,6 +67,10 @@ bool s_frame_ready = false;
 // down) so drawAircraft() can highlight the selected symbol on the radar.
 bool s_has_selection = false;
 services::adsb::Aircraft s_selected;
+/** False once the selected aircraft drops out of the ADS-B feed; panel greys out and shows GONE. */
+bool s_selected_present = true;
+/** millis() timestamp of the moment it was lost; drives the "GONE Xs" readout. */
+unsigned long s_lost_since_ms = 0;
 
 class DrawScope {
  public:
@@ -97,6 +109,7 @@ float findVlwSizeForHeight(int target_px) {
 }
 
 void applyScaleStyle();
+void applyOuterRangeStyle();
 
 const lgfx::GFXfont* pickGfxFontClosest(
     int target_px, const lgfx::GFXfont* const* candidates, size_t count) {
@@ -142,6 +155,18 @@ void initLabelMetrics() {
     s_scale_use_vlw = false;
   }
 
+  const int outer_range_target = radar::kOuterRangeLabelHeightPx;
+  if (displayFontIsSmooth()) {
+    s_outer_range_use_vlw = true;
+    s_outer_range_vlw_size = findVlwSizeForHeight(outer_range_target);
+  } else {
+    const lgfx::GFXfont* outer_range_candidates[] = {&fonts::FreeSansBold18pt7b,
+                                                     &fonts::FreeSansBold12pt7b};
+    s_outer_range_gfx =
+        pickGfxFontClosest(outer_range_target, outer_range_candidates, 2);
+    s_outer_range_use_vlw = false;
+  }
+
   applyScaleStyle();
   s_scale_label_h = tft.fontHeight();
   s_scale_label_max_w = 0;
@@ -177,6 +202,23 @@ void initTagLabelMetrics() {
   }
 
   s_tag_label_metrics_ready = true;
+}
+
+void initPanelLabelMetrics() {
+  if (s_panel_label_metrics_ready) {
+    return;
+  }
+
+  const int target = radar::kInfoPanelLineHeightPx;
+  if (displayFontIsSmooth()) {
+    s_panel_use_vlw = true;
+    s_panel_vlw_size = findVlwSizeForHeight(target);
+  } else {
+    s_panel_gfx = &fonts::FreeSans9pt7b;
+    s_panel_use_vlw = false;
+  }
+
+  s_panel_label_metrics_ready = true;
 }
 
 void initPalette() {
@@ -579,6 +621,14 @@ void applyScaleStyle() {
   }
 }
 
+void applyOuterRangeStyle() {
+  if (s_outer_range_use_vlw) {
+    displayFontSetSmoothSize(*s_draw, s_outer_range_vlw_size);
+  } else {
+    displayFontSetBitmap(*s_draw, s_outer_range_gfx);
+  }
+}
+
 void drawCardinalLabel(const char* text, int x, int y, textdatum_t datum) {
   applyCardinalStyle();
   s_draw->setTextDatum(datum);
@@ -661,7 +711,7 @@ void drawOuterRangeLabel() {
   char label[12];
   radar::formatRing3Label(label, sizeof(label), radar::rangeCurrent().outer_km,
                           radar::useMiles());
-  applyScaleStyle();
+  applyOuterRangeStyle();
   s_draw->setTextDatum(textdatum_t::top_right);
   s_draw->setTextColor(radar::kColorGrid, radar::kColorBackground);
   constexpr int kMarginPx = 4;
@@ -778,18 +828,25 @@ void refreshSelectedSnapshot() {
   for (size_t i = 0; i < n; ++i) {
     if (strcmp(planes[i].callsign, s_selected.callsign) == 0) {
       s_selected = planes[i];
+      s_selected_present = true;
       return;
     }
   }
   // Not in the latest fetch (drifted out of range/lost) — keep last-known
-  // snapshot rather than yanking the panel out from under the user.
+  // snapshot rather than yanking the panel out from under the user, but flag
+  // it as stale so the panel can grey out and show GONE.
+  if (s_selected_present) {
+    s_lost_since_ms = millis();
+  }
+  s_selected_present = false;
 }
 
 void applyPanelStyle() {
-  if (displayFontIsSmooth()) {
-    displayFontSetSmoothSize(tft, 0.85f);
+  initPanelLabelMetrics();
+  if (s_panel_use_vlw) {
+    displayFontSetSmoothSize(tft, s_panel_vlw_size);
   } else {
-    displayFontSetBitmap(tft, &fonts::FreeSans9pt7b);
+    displayFontSetBitmap(tft, s_panel_gfx);
   }
 }
 
@@ -808,7 +865,9 @@ void drawSelectionPanel() {
   displayFontEnsureLoaded(tft);
   applyPanelStyle();
   tft.setTextDatum(textdatum_t::top_left);
-  tft.setTextColor(config::kTextOnBlack, config::kColorBlack);
+  const uint16_t text_color =
+      s_selected_present ? config::kTextOnBlack : config::kColorGreyText;
+  tft.setTextColor(text_color, config::kColorBlack);
 
   constexpr int kPanelPadX = 6;
   constexpr int kPanelLineGap = 2;
@@ -829,6 +888,17 @@ void drawSelectionPanel() {
   tft.drawString(line2, kPanelPadX, y);
   y += line_h + kPanelLineGap;
 
+  // "GONE Xs" shares the bottom row with the municipality line; reserve room
+  // for it on the right so the truncated municipality text doesn't run
+  // under it.
+  char gone_text[16] = "";
+  int gone_reserved_w = 0;
+  if (!s_selected_present) {
+    snprintf(gone_text, sizeof(gone_text), "GONE %lus",
+             (millis() - s_lost_since_ms) / 1000);
+    gone_reserved_w = tft.textWidth(gone_text) + kPanelPadX;
+  }
+
   char line3[24];
   char line4[48];
   line4[0] = '\0';
@@ -842,7 +912,7 @@ void drawSelectionPanel() {
              s_route_origin_municipality, s_route_destination_country,
              s_route_destination_municipality);
     fitLineWithEllipsis(full, line4, sizeof(line4),
-                        config::kDisplayWidth - kPanelPadX * 2);
+                        config::kDisplayWidth - kPanelPadX * 2 - gone_reserved_w);
   } else {
     strncpy(line3, "Route unavailable", sizeof(line3) - 1);
     line3[sizeof(line3) - 1] = '\0';
@@ -852,6 +922,14 @@ void drawSelectionPanel() {
 
   if (line4[0] != '\0') {
     tft.drawString(line4, kPanelPadX, y);
+  }
+
+  if (!s_selected_present) {
+    tft.setTextDatum(textdatum_t::top_right);
+    tft.setTextColor(config::kTextOnBlack, config::kColorBlack);
+    tft.drawString(gone_text, config::kDisplayWidth - kPanelPadX, y);
+    tft.setTextColor(text_color, config::kColorBlack);
+    tft.setTextDatum(textdatum_t::top_left);
   }
 
   if (s_lookup_ready && s_aircraft_valid) {
@@ -939,6 +1017,7 @@ bool radarSelectionCycleNext(char* callsign_out, size_t callsign_out_len,
 
   s_selected = planes[visible[next_pos]];
   s_has_selection = true;
+  s_selected_present = true;
   clearLookupState();
   if (callsign_out != nullptr && callsign_out_len > 0) {
     strncpy(callsign_out, s_selected.callsign, callsign_out_len - 1);

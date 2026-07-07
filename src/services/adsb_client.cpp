@@ -247,6 +247,8 @@ void fillTagFields(Aircraft* ac, const JsonObject& plane) {
 
 void setPollFn(PollFn fn) { s_poll_fn = fn; }
 
+void releaseConnection() { s_client.stop(); }
+
 size_t aircraftCount() { return s_aircraft_count; }
 
 const Aircraft* aircraftList() { return s_aircraft; }

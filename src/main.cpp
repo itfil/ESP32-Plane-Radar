@@ -64,6 +64,11 @@ void onSelectTap() {
     return;
   }
 
+  // Free the ADS-B keep-alive connection's TLS memory first — otherwise these
+  // two handshakes to api.adsbdb.com can fail under heap pressure while it's
+  // held open. The next scheduled ADS-B poll just reconnects.
+  services::adsb::releaseConnection();
+
   const unsigned long lookup_start = millis();
 
   services::flight_route::Route route;

@@ -28,4 +28,12 @@ void setPollFn(PollFn fn);
 /** Fetch aircraft within fetch_radius_km of center_lat/lon from adsb.fi. */
 bool fetchUpdate(double center_lat, double center_lon, float fetch_radius_km);
 
+/**
+ * Force-close the persistent keep-alive connection to adsb.fi, freeing its
+ * TLS session memory. Call before other HTTPS requests (e.g. the SELECT
+ * lookups) that need headroom for their own handshake; fetchUpdate()
+ * transparently reconnects on its next call.
+ */
+void releaseConnection();
+
 }  // namespace services::adsb

@@ -56,7 +56,7 @@ constexpr double kDefaultRadarLat = 46.6390;
 constexpr double kDefaultRadarLon = 7.0569;
 
 /** Poll adsb.fi (API public limit: 1 req/s). */
-constexpr unsigned long kAdsbFetchIntervalMs = 3000;
+constexpr unsigned long kAdsbFetchIntervalMs = 5000;
 /** Legacy scale unused — fetch uses radar::fetchRadiusKm() to screen edge. */
 constexpr float kAdsbFetchRadiusScale = 1.0f;
 /** false = hide aircraft with alt_baro "ground"; true = show them too. */
@@ -67,5 +67,7 @@ constexpr uint16_t kColorBlack = 0x0000;
 constexpr uint16_t kColorYellow = 0xFFE0;
 constexpr uint16_t kTextOnYellow = kColorBlack;
 constexpr uint16_t kTextOnBlack = 0xFFFF;
+/** Medium grey — info-panel text once the selected aircraft drops off the feed. */
+constexpr uint16_t kColorGreyText = 0x8410;
 
 }  // namespace config
