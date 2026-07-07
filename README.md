@@ -29,12 +29,13 @@ On panels taller than the 240×240 radar (e.g. the 240×320 TJCTM24024-SPI), tap
 through the aircraft currently drawn as full symbols inside the outer ring (highlighted with a white
 target-lock ring) and shows, in the strip below the radar:
 
+- **Top line:** operating airline's full name, truncated with `...` if too long to fit
 - **Left column:** callsign, aircraft type (from the ADS-B feed), altitude, ground speed
 - **Right column:** registered aircraft type and manufacturer, looked up from adsbdb by the aircraft's
   Mode-S hex address (`/v0/aircraft/{hex}`)
 - **Bottom lines:** scheduled route as airport codes (origin → destination), then a friendlier
-  `country-municipality → country-municipality` description, truncated with `...` if too long to fit;
-  both looked up from adsbdb by callsign (`/v0/callsign/{callsign}`)
+  `country-municipality → country-municipality` description, also truncated with `...` if needed;
+  the airline name and route lines are all looked up from adsbdb by callsign (`/v0/callsign/{callsign}`)
 
 Both lookups are a single one-off request per selected aircraft, fired together only when the
 selection changes — never part of the periodic ADS-B poll. Either can independently show

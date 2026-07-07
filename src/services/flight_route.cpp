@@ -47,6 +47,7 @@ bool fetchRoute(const char* callsign, Route* out) {
   out->origin_municipality[0] = '\0';
   out->destination_country[0] = '\0';
   out->destination_municipality[0] = '\0';
+  out->airline_name[0] = '\0';
 
   if (callsign == nullptr || callsign[0] == '\0') {
     return false;
@@ -107,6 +108,12 @@ bool fetchRoute(const char* callsign, Route* out) {
                 sizeof(out->destination_country));
   copyJsonField(destination, "municipality", out->destination_municipality,
                 sizeof(out->destination_municipality));
+
+  JsonObject airline = flightroute["airline"];
+  if (!airline.isNull()) {
+    copyJsonField(airline, "name", out->airline_name, sizeof(out->airline_name));
+  }
+
   return out->origin[0] != '\0' && out->destination[0] != '\0';
 }
 

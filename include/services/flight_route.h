@@ -11,6 +11,7 @@ struct Route {
   char origin_municipality[24] = "";
   char destination_country[4] = "";
   char destination_municipality[24] = "";
+  char airline_name[32] = "";
 };
 
 /**

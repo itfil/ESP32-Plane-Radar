@@ -765,6 +765,7 @@ char s_route_origin_country[4] = "";
 char s_route_origin_municipality[24] = "";
 char s_route_destination_country[4] = "";
 char s_route_destination_municipality[24] = "";
+char s_route_airline[32] = "";
 bool s_aircraft_valid = false;
 char s_aircraft_type[24] = "";
 char s_aircraft_manufacturer[20] = "";
@@ -778,6 +779,7 @@ void clearLookupState() {
   s_route_origin_municipality[0] = '\0';
   s_route_destination_country[0] = '\0';
   s_route_destination_municipality[0] = '\0';
+  s_route_airline[0] = '\0';
   s_aircraft_valid = false;
   s_aircraft_type[0] = '\0';
   s_aircraft_manufacturer[0] = '\0';
@@ -870,9 +872,18 @@ void drawSelectionPanel() {
   tft.setTextColor(text_color, config::kColorBlack);
 
   constexpr int kPanelPadX = 6;
-  constexpr int kPanelLineGap = 2;
+  constexpr int kPanelPadTopPx = 4;
+  constexpr int kPanelLineGap = 1;
   const int line_h = tft.fontHeight();
-  int y = panel_y + kPanelPadX;
+  int y = panel_y + kPanelPadTopPx;
+
+  if (s_lookup_ready && s_route_valid && s_route_airline[0] != '\0') {
+    char airline_line[32];
+    fitLineWithEllipsis(s_route_airline, airline_line, sizeof(airline_line),
+                        config::kDisplayWidth - kPanelPadX * 2);
+    tft.drawString(airline_line, kPanelPadX, y);
+  }
+  y += line_h + kPanelLineGap;
 
   const int y1 = y;
   char line1[24];
@@ -1057,6 +1068,8 @@ void radarSelectionSetRoute(const char* for_callsign, bool found,
   strncpy(s_route_destination_municipality, route.destination_municipality,
           sizeof(s_route_destination_municipality) - 1);
   s_route_destination_municipality[sizeof(s_route_destination_municipality) - 1] = '\0';
+  strncpy(s_route_airline, route.airline_name, sizeof(s_route_airline) - 1);
+  s_route_airline[sizeof(s_route_airline) - 1] = '\0';
 }
 
 void radarSelectionSetAircraftInfo(const char* for_callsign, bool found,

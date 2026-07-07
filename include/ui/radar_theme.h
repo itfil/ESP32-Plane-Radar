@@ -65,8 +65,8 @@ constexpr int kAircraftTagLabelHeightPx = 13;
 /** Target cap height (px) for the top-right outer-range label; corner has room to spare. */
 constexpr int kOuterRangeLabelHeightPx = 18;
 
-/** Target cap height (px) for the info-panel lines; 4 lines must fit the ~80px strip. */
-constexpr int kInfoPanelLineHeightPx = 11;
+/** Target cap height (px) for the info-panel lines; 5 lines must fit the ~80px strip. */
+constexpr int kInfoPanelLineHeightPx = 13;
 
 /** RGB565 palette targets (applied in initPalette). */
 constexpr uint8_t kBgR = 4;
