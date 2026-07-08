@@ -39,6 +39,8 @@ constexpr gpio_num_t kDisplayPinSclk = GPIO_NUM_4;  // display SCK
 
 constexpr int kDisplayWidth = 240;
 constexpr int kDisplayHeight = 320;
+/** 0/1/2/3 = 0°/90°/180°/270°. Set to match the physical mounting orientation. */
+constexpr uint8_t kDisplayRotation = 2;
 
 // --- Touch: XPT2046 on the TJCTM24024-SPI panel (shares the display's SCLK/MOSI) ---
 constexpr gpio_num_t kTouchPinCs = GPIO_NUM_7;
