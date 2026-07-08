@@ -732,6 +732,19 @@ void drawOuterRangeLabel() {
   s_draw->drawString(label, radar::kSize - 1 - kMarginPx, kMarginPx);
 }
 
+/** Active location name, top-left corner — same size as the range label, but white. */
+void drawLocationLabel() {
+  const char* name = services::location::name();
+  if (name[0] == '\0') {
+    return;
+  }
+  applyOuterRangeStyle();
+  s_draw->setTextDatum(textdatum_t::top_left);
+  s_draw->setTextColor(radar::kColorLabel, radar::kColorBackground);
+  constexpr int kMarginPx = 4;
+  s_draw->drawString(name, kMarginPx, kMarginPx);
+}
+
 template <typename Gfx>
 void drawStaticGrid(Gfx& gfx) {
   initLabelMetrics();
@@ -750,6 +763,7 @@ void drawStaticGrid(Gfx& gfx) {
   drawCardinalLabels();
   drawScaleLabel(cx, cy, grid_r);
   drawOuterRangeLabel();
+  drawLocationLabel();
   gfx.setTextDatum(textdatum_t::top_left);
 }
 
@@ -1053,6 +1067,11 @@ bool radarSelectionCycleNext(char* callsign_out, size_t callsign_out_len,
     hex_out[hex_out_len - 1] = '\0';
   }
   return true;
+}
+
+void radarSelectionClear() {
+  s_has_selection = false;
+  clearLookupState();
 }
 
 bool radarSelectionLookupNeedsFetch() { return s_has_selection && !s_lookup_ready; }

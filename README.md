@@ -21,6 +21,7 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 | BOOT (GPIO 9, active LOW) | **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
 | Touch the radar circle | **Tap** | Same as a BOOT short tap — cycle range preset |
 | Touch the info panel (bottom strip) | **Tap** | Cycle the aircraft info panel through in-ring aircraft, then back to none |
+| Touch the top-left corner (location name) | **Tap** | Cycle to the next named location; immediately refetches and redraws for the new coordinates |
 
 During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
 
@@ -66,7 +67,7 @@ The same portal runs on the setup AP and on the device’s LAN IP while connecte
 
 | Field | Purpose |
 |-------|---------|
-| **Latitude / Longitude** | Radar center and ADS-B query position (defaults in `config.h` until set) |
+| **Location 1-5 name / latitude / longitude** | Up to 5 named radar centers. A slot only counts if its **name** (max 8 chars) is non-empty — empty-named slots are ignored and skipped when cycling. Tap the location name (top-left on the radar) to cycle between named locations; the active one persists across reboot. Leaving all 5 unnamed keeps the original single-location behavior (defaults in `config.h` until set). |
 | **Display distances in miles** | Ring scale label in **mi** instead of **km** (e.g. `6mi` vs `10km`) |
 | **Show airport runways** | Major-airport runway overlay on the radar (off to hide) |
 
@@ -79,6 +80,7 @@ After a reset, the device reboots and shows the setup screen immediately (no “
 - Dark blue background, subdued green rings and crosshairs
 - White **N / S / E / W** at the bezel; range label on the **east** spoke (ring 3 = ¾ of outer radius)
 - Outer-edge range (full display radius) in the **top-right corner**
+- Active location's name (if any are named) in white in the **top-left corner**
 - White center dot
 - SELECT-ed aircraft gets a white target-lock ring around its symbol
 

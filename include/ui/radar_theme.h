@@ -65,6 +65,10 @@ constexpr int kAircraftTagLabelHeightPx = 13;
 /** Target cap height (px) for the top-right outer-range label; corner has room to spare. */
 constexpr int kOuterRangeLabelHeightPx = 18;
 
+/** Top-left touch target for cycling locations; sized around the location-name label's footprint. */
+constexpr int kLocationTapZoneWidthPx = 80;
+constexpr int kLocationTapZoneHeightPx = 50;
+
 /** Target cap height (px) for the info-panel lines; 5 lines must fit the ~80px strip. */
 constexpr int kInfoPanelLineHeightPx = 13;
 

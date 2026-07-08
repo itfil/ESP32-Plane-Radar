@@ -33,6 +33,8 @@ void showRadarIfConnected() {
   g_radar_visible = true;
 }
 
+void fetchAndDrawAircraft();
+
 void onRangeTap() {
   ui::radar::rangeNext();
   char range_label[12];
@@ -87,6 +89,19 @@ void onSelectTap() {
   }
 }
 
+void onLocationTap() {
+  if (!services::location::cycleNext()) {
+    return;  // fewer than 2 named locations — nothing to cycle to
+  }
+  Serial.printf("Location: %s (%.6f, %.6f)\n", services::location::name(),
+                services::location::lat(), services::location::lon());
+  ui::radarSelectionClear();
+  if (g_radar_visible) {
+    g_last_adsb_fetch_ms = millis();
+    fetchAndDrawAircraft();
+  }
+}
+
 void handleTouchInput() {
   touchPoll();
   if (touchConsumeRangeTap()) {
@@ -94,6 +109,9 @@ void handleTouchInput() {
   }
   if (touchConsumeSelectTap()) {
     onSelectTap();
+  }
+  if (touchConsumeLocationTap()) {
+    onLocationTap();
   }
 }
 

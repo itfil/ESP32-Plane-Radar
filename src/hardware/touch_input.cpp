@@ -10,9 +10,11 @@ namespace {
 
 bool s_was_touched = false;
 unsigned long s_touch_down_ms = 0;
+int32_t s_touch_down_x = 0;
 int32_t s_touch_down_y = 0;
 bool s_range_tap_pending = false;
 bool s_select_tap_pending = false;
+bool s_location_tap_pending = false;
 
 }  // namespace
 
@@ -34,13 +36,21 @@ void touchPoll() {
 
   if (touched && !s_was_touched) {
     s_touch_down_ms = now;
+    s_touch_down_x = x;
     s_touch_down_y = y;
   } else if (!touched && s_was_touched &&
              now - s_touch_down_ms >= config::kTouchTapMinMs) {
     if (s_touch_down_y < ui::radar::kSize) {
-      s_range_tap_pending = true;
-      Serial.printf("touch: tap at y=%ld -> RANGE (radar zone, y < %d)\n",
-                    (long)s_touch_down_y, ui::radar::kSize);
+      if (s_touch_down_x < ui::radar::kLocationTapZoneWidthPx &&
+          s_touch_down_y < ui::radar::kLocationTapZoneHeightPx) {
+        s_location_tap_pending = true;
+        Serial.printf("touch: tap at (%ld, %ld) -> LOCATION (corner zone)\n",
+                      (long)s_touch_down_x, (long)s_touch_down_y);
+      } else {
+        s_range_tap_pending = true;
+        Serial.printf("touch: tap at y=%ld -> RANGE (radar zone, y < %d)\n",
+                      (long)s_touch_down_y, ui::radar::kSize);
+      }
     } else {
       s_select_tap_pending = true;
       Serial.printf("touch: tap at y=%ld -> SELECT (panel zone, y >= %d)\n",
@@ -63,5 +73,13 @@ bool touchConsumeSelectTap() {
     return false;
   }
   s_select_tap_pending = false;
+  return true;
+}
+
+bool touchConsumeLocationTap() {
+  if (!s_location_tap_pending) {
+    return false;
+  }
+  s_location_tap_pending = false;
   return true;
 }

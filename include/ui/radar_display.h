@@ -23,6 +23,9 @@ void radarDisplayRefreshAircraft();
 bool radarSelectionCycleNext(char* callsign_out, size_t callsign_out_len,
                              char* hex_out, size_t hex_out_len);
 
+/** Reset the selection to "none" (e.g. when the radar center location changes). */
+void radarSelectionClear();
+
 /** True if an aircraft is selected and its route/aircraft info haven't been looked up yet. */
 bool radarSelectionLookupNeedsFetch();
 
