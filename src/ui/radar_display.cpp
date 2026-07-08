@@ -595,13 +595,27 @@ void drawAircraft() {
     drawSpeedVector(x, y, planes[i].nose_deg, planes[i].track_deg,
                     planes[i].gs_knots, radar::kColorTrackVector);
     drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
-    if (isSelected(planes[i])) {
-      drawSelectionRing(x, y);
-    }
   }
   for (size_t d = 0; d < draw_count; ++d) {
     const size_t i = items[d].index;
     drawAircraftTag(items[d].x, items[d].y, planes[i]);
+  }
+
+  // Redraw the selected aircraft last so it (symbol, vector, ring, and tag)
+  // always sits on top, regardless of the distance-based draw order above.
+  for (size_t d = 0; d < draw_count; ++d) {
+    const size_t i = items[d].index;
+    if (!isSelected(planes[i])) {
+      continue;
+    }
+    const int x = items[d].x;
+    const int y = items[d].y;
+    drawSpeedVector(x, y, planes[i].nose_deg, planes[i].track_deg,
+                    planes[i].gs_knots, radar::kColorTrackVector);
+    drawHeadingTriangle(x, y, planes[i].nose_deg, radar::kColorAircraft);
+    drawSelectionRing(x, y);
+    drawAircraftTag(x, y, planes[i]);
+    break;  // at most one aircraft is ever selected
   }
 }
 

@@ -29,22 +29,28 @@ constexpr unsigned long kBootResetHoldMs = 3000UL;
 /** Ignore BOOT taps shorter than this (debounce). */
 constexpr unsigned long kBootTapMinMs = 40UL;
 
-// --- SELECT button: cycles the aircraft info panel (active LOW) ---
-constexpr gpio_num_t kSelectPin = GPIO_NUM_6;
-/** Ignore SELECT taps shorter than this (debounce). */
-constexpr unsigned long kSelectTapMinMs = 40UL;
-
 // --- Display: TJCTM24024-SPI 2.4" ILI9341 240×320 (SPI) ---
 constexpr gpio_num_t kDisplayPinRst = GPIO_NUM_0;
 constexpr gpio_num_t kDisplayPinCs = GPIO_NUM_1;
 constexpr gpio_num_t kDisplayPinDc = GPIO_NUM_10;
 constexpr gpio_num_t kDisplayPinMosi = GPIO_NUM_3;  // display SDI(MOSI)
 constexpr gpio_num_t kDisplayPinSclk = GPIO_NUM_4;  // display SCK
-/** LED (backlight) pin; tie LED to 3V3 instead and drop this if no PWM dimming is needed. */
-constexpr gpio_num_t kDisplayPinBl = GPIO_NUM_5;
+// LED (backlight) is wired directly to 3V3 — no GPIO/PWM control.
 
 constexpr int kDisplayWidth = 240;
 constexpr int kDisplayHeight = 320;
+
+// --- Touch: XPT2046 on the TJCTM24024-SPI panel (shares the display's SCLK/MOSI) ---
+constexpr gpio_num_t kTouchPinCs = GPIO_NUM_7;
+constexpr gpio_num_t kTouchPinMiso = GPIO_NUM_5;  // T_DO; also enables readback on the shared bus
+constexpr gpio_num_t kTouchPinIrq = GPIO_NUM_6;
+/** Raw ADC calibration; XPT2046 defaults — tune against the actual panel if touches misregister. */
+constexpr uint16_t kTouchXMin = 300;
+constexpr uint16_t kTouchXMax = 3900;
+constexpr uint16_t kTouchYMin = 400;
+constexpr uint16_t kTouchYMax = 3900;
+/** Ignore touch taps shorter than this (debounce). */
+constexpr unsigned long kTouchTapMinMs = 40UL;
 
 constexpr uint32_t kDisplaySpiWriteHz = 40000000;
 // ILI9341 modules typically need neither invert nor BGR swap; adjust if colors look wrong

@@ -7,7 +7,7 @@
 
 #include "config.h"
 #include "hardware/display.h"
-#include "hardware/select_button.h"
+#include "hardware/touch_input.h"
 #include "services/adsb_client.h"
 #include "services/aircraft_info.h"
 #include "services/flight_route.h"
@@ -87,10 +87,24 @@ void onSelectTap() {
   }
 }
 
-void handleSelectButton() {
-  if (selectButtonConsumeTap()) {
+void handleTouchInput() {
+  touchPoll();
+  if (touchConsumeRangeTap()) {
+    onRangeTap();
+  }
+  if (touchConsumeSelectTap()) {
     onSelectTap();
   }
+}
+
+/**
+ * Passed to adsb_client as its poll callback so a tap that lands entirely
+ * within the ADS-B fetch's blocking window (connect + body read) still gets
+ * sampled, instead of only being checked before/after the whole fetch.
+ */
+void pollDuringFetch() {
+  wifiLoop();
+  touchPoll();
 }
 
 void fetchAndDrawAircraft() {
@@ -98,12 +112,12 @@ void fetchAndDrawAircraft() {
   if (!services::adsb::fetchUpdate(services::location::lat(),
                                    services::location::lon(), fetch_km)) {
     handleBootButton();
-    handleSelectButton();
+    handleTouchInput();
     return;
   }
   ui::radarDisplayRefreshAircraft();
   handleBootButton();
-  handleSelectButton();
+  handleTouchInput();
 }
 
 }  // namespace
@@ -115,14 +129,14 @@ void setup() {
   Serial.println("Plane Radar");
 
   bootButtonInit();
-  selectButtonInit();
   displayInit();
+  touchInit();
   if (wifiShowsSetupScreenOnBoot()) {
     statusScreenPortal();
   }
   services::location::init();
   ui::radar::rangeInit();
-  services::adsb::setPollFn(wifiLoop);
+  services::adsb::setPollFn(pollDuringFetch);
 
   if (wifiSetupConnect()) {
     showRadarIfConnected();
@@ -131,7 +145,7 @@ void setup() {
 
 void loop() {
   handleBootButton();
-  handleSelectButton();
+  handleTouchInput();
   wifiLoop();
 
   if (WiFi.status() != WL_CONNECTED) {

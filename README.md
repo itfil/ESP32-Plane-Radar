@@ -15,19 +15,23 @@ After Wi‑Fi is saved, the device reconnects automatically; the radar runs in t
 
 ## Controls
 
-| Button | Action | Effect |
-|--------|--------|--------|
+| Input | Action | Effect |
+|-------|--------|--------|
 | BOOT (GPIO 9, active LOW) | **Short tap** | Cycle range preset (5 → 10 → 15 → 25 km); saved to flash |
 | BOOT (GPIO 9, active LOW) | **Hold 3 s** | Clear Wi‑Fi, location, and units; reboot into setup portal |
-| SELECT (GPIO 6, active LOW) | **Short tap** | Cycle the aircraft info panel through in-ring aircraft, then back to none |
+| Touch the radar circle | **Tap** | Same as a BOOT short tap — cycle range preset |
+| Touch the info panel (bottom strip) | **Tap** | Cycle the aircraft info panel through in-ring aircraft, then back to none |
 
 During setup you can also hold BOOT at power-on to force a credential reset (same as the long press).
 
+Touch is provided by the panel's XPT2046 controller; there's no physical SELECT button — see
+[Touchscreen](#touchscreen) below for wiring and calibration.
+
 ### Aircraft info panel
 
-On panels taller than the 240×240 radar (e.g. the 240×320 TJCTM24024-SPI), tapping **SELECT** cycles
-through the aircraft currently drawn as full symbols inside the outer ring (highlighted with a white
-target-lock ring) and shows, in the strip below the radar:
+On panels taller than the 240×240 radar (e.g. the 240×320 TJCTM24024-SPI), tapping the info panel
+cycles through the aircraft currently drawn as full symbols inside the outer ring (highlighted with a
+white target-lock ring) and shows, in the strip below the radar:
 
 - **Top line:** operating airline's full name, truncated with `...` if too long to fit
 - **Left column:** callsign, aircraft type (from the ADS-B feed), altitude, ground speed
@@ -82,12 +86,12 @@ Layout and colors: `include/ui/radar_theme.h`.
 
 ### Range presets
 
-| Ring 3 label | Outer radius (aircraft scale) |
-|------------|-------------------------------|
-| 5 km / 3 mi | ~6.7 km |
-| 10 km / 6 mi | ~13.3 km (default) |
-| 15 km / 9 mi | ~20 km |
-| 25 km / 16 mi | ~33.3 km |
+| Ring 3 label  | Outer radius (aircraft scale) |
+|---------------|-------------------------------|
+| 5 km / 3 mi   | ~6.7 km                       |
+| 10 km / 6 mi  | ~13.3 km (default)            |
+| 15 km / 9 mi  | ~20 km                        |
+| 25 km / 16 mi | ~33.3 km                      |
 
 Preset and miles/km choice persist across reboot (`planeradar` NVS namespace).
 
@@ -121,8 +125,8 @@ Edit **`include/config.h`** for hardware and behavior:
 | Portal | `kPortalApName`, `kPortalIp`, `kPortalHostname` / `kPortalHostUrl` (mDNS; needs `-DWM_MDNS` in `platformio.ini`) |
 | Wi‑Fi timing | connect attempts, reconnect grace, portal timeout (`0` = no timeout) |
 | BOOT | `kBootPin`, `kBootResetHoldMs`, `kBootTapMinMs` |
-| SELECT | `kSelectPin`, `kSelectTapMinMs` |
-| Display SPI | pins, `kDisplayPinBl`, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
+| Touch | `kTouchPinCs`/`kTouchPinMiso`/`kTouchPinIrq`, `kTouchXMin/XMax/YMin/YMax`, `kTouchTapMinMs` |
+| Display SPI | pins, `kDisplayInvert`, `kDisplayRgbOrder`, `kDisplaySpiWriteHz` |
 | Default location | `kDefaultRadarLat`, `kDefaultRadarLon` (until portal overrides) |
 | ADS-B | `kAdsbFetchIntervalMs`, `kAdsbShowGroundAircraft` |
 
@@ -164,20 +168,32 @@ src/
 
 ## Wiring (TJCTM24024-SPI ↔ ESP32-C3 Super Mini)
 
-| Display | ESP32-C3 |
-|---------|----------|
-| VCC | 3V3 |
-| GND | GND |
-| RST | GPIO **0** |
-| CS | GPIO **1** |
-| DC (RS) | GPIO **10** |
-| SDI (MOSI) | GPIO **3** |
-| SCK | GPIO **4** |
-| LED (backlight) | GPIO **5** |
-| BOOT (user) | GPIO **9** |
-| SELECT (user, cycle aircraft panel) | GPIO **6** (to GND, active LOW) |
+| Display         | ESP32-C3    |
+|-----------------|-------------|
+| VCC             | 3V3         |
+| GND             | GND         |
+| RST             | GPIO **0**  |
+| CS              | GPIO **1**  |
+| DC (RS)         | GPIO **10** |
+| SDI (MOSI)      | GPIO **3**  |
+| SCK             | GPIO **4**  |
+| LED (backlight) | **3V3** (tied directly, no PWM/brightness control) |
+| T_CLK           | GPIO **4** (shared with SCK) |
+| T_DIN (MOSI)    | GPIO **3** (shared with SDI) |
+| T_DO (MISO)     | GPIO **5**  |
+| T_CS            | GPIO **7**  |
+| T_IRQ           | GPIO **6**  |
+| BOOT (user)     | GPIO **9**  |
 
-Touch (T_CLK/T_CS/T_DIN/T_DO/T_IRQ) is not wired up — the firmware has no touch input support.
+GPIO 20/21 are intentionally unused for anything on this board — they were found to disturb Wi‑Fi
+on this particular ESP32-C3 Super Mini model.
+
+### Touchscreen
+
+Touch coordinate calibration (`kTouchXMin`/`kTouchXMax`/`kTouchYMin`/`kTouchYMax` in `config.h`) is
+seeded with common XPT2046 defaults and is panel-specific — after flashing, verify taps register
+accurately near all four corners. If X/Y come out swapped or mirrored relative to the display,
+adjust `offset_rotation` on the touch config in `lgfx_config.hpp` instead of the min/max values.
 
 ## Build
 
